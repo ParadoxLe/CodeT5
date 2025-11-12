@@ -6,9 +6,9 @@ def main():
     # ==================== 配置参数（对应原 bash 脚本中的变量）====================
     model = "codet5p-220m"  # 模型名称（可改为 codet5p-220m 等小模型）
     temp = 0.2                     # 温度参数
-    max_len = 800                  # 生成代码最大长度
-    pred_num = 200                 # 每个问题生成的样本数
-    num_seqs_per_iter = 2          # 每次迭代生成的序列数（控制内存使用）
+    max_len = 800                  # 生成代码最大长度，原始长度800
+    pred_num = 200                 # 每个问题生成的样本数，原始长度200
+    num_seqs_per_iter = 2          # 每次迭代生成的序列数（控制内存使用），原始为2
     gpu_num = 1                    # GPU 数量（根据你的设备修改，如 1 个 GPU）
     total_problems = 164           # HumanEval
     output_dir = f"preds/{model}_T{temp}_N{pred_num}"  # 输出目录
