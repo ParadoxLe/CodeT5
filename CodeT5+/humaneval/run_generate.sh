@@ -12,7 +12,9 @@ echo 'Model to eval: '$model
 
 # 164 problems, 21 per GPU if GPU=8
 index=0
-gpu_num=8
+#gpu_num=8
+#修改GPU使用数目
+gpu_num=1
 for ((i = 0; i < $gpu_num; i++)); do
   start_index=$((i * 21))
   end_index=$(((i + 1) * 21))

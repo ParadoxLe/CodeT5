@@ -37,7 +37,7 @@ Create a Python script for this problem:
 def main():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--model', type=str, default='Salesforce/instructcodet5p-16b', help="")
+    parser.add_argument('--model', type=str, default='Salesforce/codet5p-220m', help="")
     parser.add_argument('--output_path', type=str, help="")
     parser.add_argument('--start_index', type=int, default=0, help="")
     parser.add_argument('--end_index', type=int, default=164, help="")
@@ -67,7 +67,7 @@ def main():
 
     model = AutoModelForSeq2SeqLM.from_pretrained(args.model,
                                                   trust_remote_code=True,  # False for 220m and 770m models
-                                                  torch_dtype=torch.float16,
+                                                  dtype=torch.float16,
                                                   low_cpu_mem_usage=True)
     model.eval()
     model.to(device)
