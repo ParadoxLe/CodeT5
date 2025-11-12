@@ -10,7 +10,7 @@ def main():
     pred_num = 200                 # 每个问题生成的样本数
     num_seqs_per_iter = 2          # 每次迭代生成的序列数（控制内存使用）
     gpu_num = 1                    # GPU 数量（根据你的设备修改，如 1 个 GPU）
-    total_problems = 1           # HumanEval 总问题数--已修改原本164
+    total_problems = 164           # HumanEval
     output_dir = f"preds/{model}_T{temp}_N{pred_num}"  # 输出目录
 
     # ==================== 创建输出目录 ====================
