@@ -42,7 +42,7 @@ Create a Python script for this problem:
 def main():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--model', type=str, default='Salesforce/codet5p-770m', help="")
+    parser.add_argument('--model', type=str, default='Salesforce/codet5p-2B', help="")
     parser.add_argument('--output_path', type=str, help="")
     parser.add_argument('--start_index', type=int, default=0, help="")
     parser.add_argument('--end_index', type=int, default=164, help="")

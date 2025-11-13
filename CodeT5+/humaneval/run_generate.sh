@@ -1,4 +1,4 @@
-model=codet5p-770m
+model=codet5p-2B
 temp=0.2
 max_len=800
 pred_num=200
