@@ -1,6 +1,11 @@
 import argparse
 import pprint
 import os
+
+
+# 设置镜像源（需在加载模型前执行）
+os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
+
 import re
 from tqdm import tqdm
 import torch
@@ -67,7 +72,7 @@ def main():
 
     model = AutoModelForSeq2SeqLM.from_pretrained(args.model,
                                                   trust_remote_code=True,  # False for 220m and 770m models
-                                                  dtype=torch.float16,
+                                                  torch_dtype=torch.float16,
                                                   low_cpu_mem_usage=True)
     model.eval()
     model.to(device)
