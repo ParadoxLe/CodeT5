@@ -1,11 +1,7 @@
 import argparse
 import pprint
 import os
-
-
-# 设置镜像源（需在加载模型前执行）
 os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
-
 import re
 from tqdm import tqdm
 import torch
@@ -42,7 +38,7 @@ Create a Python script for this problem:
 def main():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--model', type=str, default='Salesforce/codet5p-2B', help="")
+    parser.add_argument('--model', type=str, default='Salesforce/codet5p-770M', help="")
     parser.add_argument('--output_path', type=str, help="")
     parser.add_argument('--start_index', type=int, default=0, help="")
     parser.add_argument('--end_index', type=int, default=164, help="")

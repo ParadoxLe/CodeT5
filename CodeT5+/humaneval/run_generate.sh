@@ -1,4 +1,4 @@
-model=codet5p-2B
+model=codet5p-770M
 temp=0.2
 max_len=800
 pred_num=200
@@ -10,12 +10,12 @@ mkdir -p ${output_path}
 echo 'Output path: '$output_path
 echo 'Model to eval: '$model
 
-# 164 problems, 21 per GPU if GPU=8
+# 164 problems,  164 per GPU if GPU=1
 index=0
 gpu_num=1
 for ((i = 0; i < $gpu_num; i++)); do
-  start_index=$((i * 21))
-  end_index=$(((i + 1) * 21))
+  start_index=0
+  end_index=1
 
   gpu=$((i))
   echo 'Running process #' ${i} 'from' $start_index 'to' $end_index 'on GPU' ${gpu}

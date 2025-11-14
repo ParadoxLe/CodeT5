@@ -42,6 +42,9 @@ def run_training(args, model, train_data):
         local_rank=args.local_rank,
         deepspeed=args.deepspeed,
         fp16=args.fp16,
+        lr_scheduler_type="cosine_with_restarts",  # 替换为余弦退火调度器
+        label_smoothing_factor=0.1,  # 添加标签平滑
+
     )
 
     trainer = Trainer(
@@ -127,7 +130,7 @@ if __name__ == "__main__":
 
     # Training
     parser.add_argument('--epochs', default=10, type=int)
-    parser.add_argument('--lr', default=5e-5, type=float)
+    parser.add_argument('--lr', default=1e-5, type=float)
     parser.add_argument('--lr-warmup-steps', default=200, type=int)
     parser.add_argument('--batch-size-per-replica', default=8, type=int)
     parser.add_argument('--grad-acc-steps', default=4, type=int)

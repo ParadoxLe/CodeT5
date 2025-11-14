@@ -68,7 +68,7 @@ def run_training(args, model, train_data):
         gradient_accumulation_steps=args.grad_acc_steps,
 
         learning_rate=args.lr,
-        weight_decay=0.0,
+        weight_decay=0.05,# 增加权重衰减，从 0.0 → 0.05（缓解过拟合）
         warmup_steps=args.lr_warmup_steps,
 
         logging_dir=args.save_dir,
@@ -82,6 +82,11 @@ def run_training(args, model, train_data):
         local_rank=args.local_rank,
         deepspeed=args.deepspeed,
         fp16=args.fp16,
+
+        # ... 其他参数不变 ...
+        lr_scheduler_type="cosine_with_restarts",  # 替换为余弦退火调度器
+        label_smoothing_factor=0.1,  # 添加标签平滑
+
     )
 
     trainer = Trainer(
@@ -106,6 +111,16 @@ def load_tokenize_data(args):
         return train_data
     else:
         datasets = load_dataset('json', data_files=args.instruct_data_path)['train']
+        # 在 datasets = load_dataset(...)['train'] 之后添加
+        datasets = datasets.filter(
+            lambda x: len(x["instruction"].strip()) > 5  # 过滤过短指令
+                      and len(x["output"].strip()) > 5  # 过滤过短输出
+                      and (x["input"].strip() == "" or len(x["input"].strip()) > 5)  # 过滤无效输入
+        ).filter(
+            lambda x: x["instruction"] not in seen and not seen.add(x["instruction"])  # 去重指令
+        )
+        # 注意：需要在函数开头初始化 seen 集合
+        seen = set()
         tokenizer = AutoTokenizer.from_pretrained(args.load)
 
         def preprocess_function(examples):
@@ -196,6 +211,7 @@ if __name__ == "__main__":
     parser.add_argument('--local_rank', default=-1, type=int)
     parser.add_argument('--deepspeed', default=None, type=str)
     parser.add_argument('--fp16', default=False, action='store_true')
+
 
     # Logging and stuff
     parser.add_argument('--save-dir', default="saved_models/instruct_codet5p_16b", type=str)
