@@ -1,4 +1,5 @@
 import os
+
 # 设置国内镜像加速模型下载
 os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 import pprint
@@ -16,6 +17,9 @@ from transformers import (
     DataCollatorForSeq2Seq
 )
 
+# 限制PyTorch占用的最大GPU内存比例
+# 预留10%给系统
+torch.cuda.set_per_process_memory_fraction(0.9)
 
 # 指令模板（适配代码生成任务）
 PROMPT_DICT = {
@@ -39,23 +43,21 @@ def get_model_size(model):
     return f"{round(model_size / 1e+6)}M"
 
 
-def freeze_decoder_except_xattn_codegen(model):
-    """冻结解码器部分参数，只训练交叉注意力层（适合小模型加速训练）"""
+def unfreeze_all_decoder(model):
+    """完全解冻解码器所有参数（提升精度的关键改动）"""
     print(f'冻结前参数: 总参数 {model.num_parameters()}, 可训练参数 {get_model_size(model)}')
-    for param in model.decoder.parameters():
-        param.requires_grad = False  # 冻结整个解码器
 
-    # 解冻交叉注意力层（CodeT5+ 解码器的关键层）
+    # 完全解冻解码器所有层（包括自注意力、前馈网络、交叉注意力等）
+    for param in model.decoder.parameters():
+        param.requires_grad = True
+
+    # 保持交叉注意力层高精度（可选，视硬件而定）
     num_decoder_layers = model.decoder.config.num_layers
     for i in range(num_decoder_layers):
         decoder_layer = model.decoder.block[i]
         if hasattr(decoder_layer, 'crossattention'):
-            for param in decoder_layer.crossattention.parameters():
-                param.requires_grad = True
-            decoder_layer.crossattention.to(torch.float32)  # 保持高精度训练
-        if hasattr(decoder_layer, 'alpha_xattn'):
-            decoder_layer.alpha_xattn.requires_grad = True  # 解冻注意力权重参数
-    print(f'冻结后参数: 总参数 {model.num_parameters()}, 可训练参数 {get_model_size(model)}')
+            decoder_layer.crossattention.to(torch.float32)  # 交叉注意力层用FP32训练
+    print(f'完全解冻后参数: 总参数 {model.num_parameters()}, 可训练参数 {get_model_size(model)}')
 
 
 def run_training(args, model, train_data, tokenizer):
@@ -80,35 +82,36 @@ def run_training(args, model, train_data, tokenizer):
                 # 移除学习率打印（避免访问 state.optimizer）
                 print(f"Step {state.global_step}/{state.max_steps} | 损失: {current_loss:.4f}")
 
-    # 训练参数配置（移除所有 DeepSpeed 相关项）
+    # 优化训练参数：减小批次和梯度累积，启用梯度检查点
     training_args = TrainingArguments(
         output_dir=args.save_dir,
         overwrite_output_dir=False,
 
-        # 训练核心参数
+        # 核心改进：减小单卡批次和梯度累积
         num_train_epochs=args.epochs,
-        per_device_train_batch_size=args.batch_size_per_replica,
-        gradient_accumulation_steps=args.grad_acc_steps,
+        per_device_train_batch_size=max(1, args.batch_size_per_replica // 2),  # 减半批次
+        gradient_accumulation_steps=min(8, args.grad_acc_steps * 2),  # 增加累积但限制上限
 
-        # 优化器参数
         learning_rate=args.lr,
         weight_decay=0.01,
         warmup_steps=args.lr_warmup_steps,
 
-        # 日志与保存
         logging_dir=os.path.join(args.save_dir, "logs"),
         logging_first_step=True,
         logging_steps=args.log_freq,
         save_strategy="epoch",
         save_total_limit=2,
 
-        # 数据加载
+        # 新增：启用梯度检查点（牺牲20%速度换内存）
+        gradient_checkpointing=True,
+        # 新增：关闭自动优化器状态保存
+        save_only_model=True,
+
         dataloader_drop_last=True,
         dataloader_num_workers=0,
 
-        # 单卡训练配置（移除 deepspeed 参数）
         local_rank=args.local_rank,
-        fp16=args.fp16,  # 保留原生 FP16 加速（非 DeepSpeed）
+        fp16=args.fp16
     )
 
     # 定义数据拼接器
@@ -236,7 +239,7 @@ def main(args):
     ).to("cuda" if torch.cuda.is_available() else "cpu")  # 强制移到 GPU
 
     # 冻结部分参数
-    freeze_decoder_except_xattn_codegen(model)
+    unfreeze_all_decoder(model)
 
     # 开始训练
     run_training(args, model, train_data, tokenizer)

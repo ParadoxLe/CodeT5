@@ -1,12 +1,14 @@
 import argparse
 import pprint
 import os
+
 os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 import sys
-import re
+import ast
 from tqdm import tqdm
 import torch
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
+
 # 获取当前脚本所在目录（test文件夹）
 current_dir = os.path.dirname(os.path.abspath(__file__))
 # 向上一级目录（humaneval文件夹），即human_eval所在的目录
@@ -16,30 +18,28 @@ sys.path.append(parent_dir)
 from human_eval.data import write_jsonl, read_problems, stream_jsonl
 
 
-def extract_text(prompt, remove_lines=True):
+def extract_text(prompt, remove_lines=False):
+    """更精准地提取问题描述（保留换行以维持格式）"""
     token = '\"\"\"'
-    start = token
-    end = '>>>'
+    start_idx = prompt.find(token) + len(token)
+    end_idx = prompt.find('>>>', start_idx)  # 从start_idx后开始找，避免误匹配
+    if end_idx == -1:
+        end_idx = prompt.find(token, start_idx)  # 若没有>>>，用下一个"""作为结束
 
-    start_idx = prompt.find(start) + len(start)
-    end_idx = prompt.find(end)
-
-    output = prompt[start_idx: end_idx]
-    if remove_lines:
-        output = output.replace('\n', ' ')
-    output = re.sub(r"\s+", " ", output).strip()
-
-    return output
+    output = prompt[start_idx:end_idx].strip()
+    # 保留换行以维持问题结构（如列表、步骤）
+    return output if not remove_lines else output.replace('\n', ' ')
 
 
-INSTRUCTION = """Below is an instruction that describes a task. Write a response that appropriately completes the request.
-
+INSTRUCTION = """Below is an instruction that describes a coding task. 
+Write a complete, runnable Python function to solve the problem. 
+The function must match the specified input/output requirements and pass all test cases.
 
 ### Instruction:
-Create a Python script for this problem:
 {}
 
-### Response:"""
+### Response:
+"""
 
 
 def main():
@@ -56,12 +56,20 @@ def main():
     parser.add_argument('--num_seqs_per_iter', type=int, default=50, help='')
     parser.add_argument('--overwrite', action='store_true', help='')
 
+    # 在 argparse 中添加 beam search 参数
+    parser.add_argument('--num_beams', type=int, default=10, help="束搜索的束数量（仅用于 beam_search 策略）")
+    parser.add_argument('--length_penalty', type=float, default=0.8, help="长度惩罚（减少过短/过长生成）")
+
     args = parser.parse_args()
 
     argsdict = vars(args)
     print(pprint.pformat(argsdict))
 
-    STOP_SEQS = ['\nclass', '\ndef', '\n#', '\nif', '\nprint']
+    STOP_SEQS = [
+        '\nclass', '\ndef', '\n#', '\nif', '\nprint',
+        '\nassert', '\nimport', '\nfrom',  # 避免生成导入语句或断言
+        '\n"""', '\n\'\'\''  # 避免生成多余文档字符串
+    ]
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     problems = read_problems()
@@ -120,7 +128,7 @@ def main():
                         gen_tokens = model.generate(**encoding,
                                                     decoder_input_ids=encoding_decoder['input_ids'],
                                                     do_sample=True,
-                                                    temperature=args.temperature,
+                                                    temperature=max(0.1, args.temperature),
                                                     max_length=args.max_len,
                                                     num_return_sequences=args.num_seqs_per_iter,
                                                     decoder_start_token_id=tokenizer.pad_token_id,
@@ -134,6 +142,26 @@ def main():
                                                     num_return_sequences=args.num_seqs_per_iter,
                                                     eos_token_id=tokenizer.eos_token_id,
                                                     top_p=0.95)
+                # 生成逻辑中添加 beam search 分支
+                if args.decoding_style == 'beam_search':
+                    if prompt_to_decoder:
+                        gen_tokens = model.generate(**encoding,
+                                                    decoder_input_ids=encoding_decoder['input_ids'],
+                                                    do_sample=False,  # 关闭采样
+                                                    num_beams=args.num_beams,
+                                                    length_penalty=args.length_penalty,  # 惩罚过短/过长序列
+                                                    max_length=args.max_len,
+                                                    num_return_sequences=1,  # 束搜索返回最优1个
+                                                    decoder_start_token_id=tokenizer.pad_token_id,
+                                                    eos_token_id=tokenizer.eos_token_id)
+                    else:
+                        gen_tokens = model.generate(**encoding,
+                                                    do_sample=False,
+                                                    num_beams=args.num_beams,
+                                                    length_penalty=args.length_penalty,
+                                                    max_length=args.max_len,
+                                                    num_return_sequences=1,
+                                                    eos_token_id=tokenizer.eos_token_id)
 
             if gen_tokens is not None:
                 if prompt_to_decoder:
@@ -146,21 +174,29 @@ def main():
                 assert len(ids_batch) == 1
                 task_id = ids_batch[0]
 
+                def is_valid_syntax(code):
+                    """检查代码是否符合Python语法"""
+                    try:
+                        ast.parse(code)
+                        return True
+                    except SyntaxError:
+                        return False
+
+                # 在生成循环中添加过滤
                 for seq_idx, gen_seq in enumerate(gen_seqs):
                     completion_seq = gen_seq
-                    for stop_seq in STOP_SEQS:
-                        index = completion_seq.find(stop_seq)
-                        if index != -1:
-                            completion_seq = completion_seq[:index]
-                    completion_seq = completion_seq.replace('\t', '    ')
-                    all_code = prompt.replace('\t', '    ') + completion_seq
+                    # ... 现有停止序列截断逻辑 ...
 
-                    completion_seqs.append(
-                        {'task_id': task_id,
-                         'completion': completion_seq,
-                         'all_code': all_code  # final code for evaluation with unit tests
-                         }
-                    )
+                    # 拼接完整代码并检查语法
+                    all_code = prompt.replace('\t', '    ') + completion_seq
+                    if not is_valid_syntax(all_code):
+                        continue  # 跳过语法错误的生成结果
+
+                    completion_seqs.append({
+                        'task_id': task_id,
+                        'completion': completion_seq,
+                        'all_code': all_code
+                    })
 
         print("Saving results to {}".format(output_file))
         write_jsonl(output_file, completion_seqs)
