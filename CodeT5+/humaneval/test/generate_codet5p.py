@@ -2,10 +2,17 @@ import argparse
 import pprint
 import os
 os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
+import sys
 import re
 from tqdm import tqdm
 import torch
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
+# 获取当前脚本所在目录（test文件夹）
+current_dir = os.path.dirname(os.path.abspath(__file__))
+# 向上一级目录（humaneval文件夹），即human_eval所在的目录
+parent_dir = os.path.dirname(current_dir)
+# 将parent_dir添加到Python搜索路径
+sys.path.append(parent_dir)
 from human_eval.data import write_jsonl, read_problems, stream_jsonl
 
 

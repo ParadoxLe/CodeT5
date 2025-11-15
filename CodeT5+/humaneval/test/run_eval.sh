@@ -11,9 +11,9 @@ fi
 
 echo "开始评估文件：$merged_file"
 
-# 直接运行评估脚本，读取 merged_results.jsonl
-PYTHONPATH="./CodeT5+/humaneval:$PYTHONPATH" \
-python human_eval/evaluate_functional_correctness.py \
-  "$merged_file" 
+# 只传递必填的 sample_file，其他参数用默认值
+PYTHONPATH="/root/autodl-tmp/CodeT5+/humaneval:$PYTHONPATH" \
+python /root/autodl-tmp/CodeT5+/humaneval/human_eval/evaluate_functional_correctness.py \
+"$merged_file"
 
 echo "评估完成，结果保存到：$eval_result_file"
